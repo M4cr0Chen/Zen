@@ -21,3 +21,7 @@ yarn-error.log*
 
 # Claude Code
 .claude/settings.local.json
+# Large audio files
+frontend/public/audio/*.mp3
+frontend/public/audio/*.wav
+frontend/public/audio/*.ogg
