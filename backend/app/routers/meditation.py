@@ -1,8 +1,9 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import google.generativeai as genai
 from app.config import get_settings
+from app.services.rag import ingest_journal
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 import asyncio
 import json
 
@@ -10,17 +11,27 @@ router = APIRouter()
 settings = get_settings()
 genai.configure(api_key=settings.google_api_key)
 
-# Meditation session stages
+# Demo user UUID for hackathon
+DEMO_USER_ID = "00000000-0000-0000-0000-000000000001"
+
+# Meditation session stages with improved, natural prompts
 MEDITATION_STAGES = [
     {
         "id": "welcome",
         "name": "Welcome",
-        "duration": 30,  # seconds
+        "duration": 30,
         "icon": "heart",
         "description": "Setting intentions",
-        "prompt": """Generate a warm, brief welcome (2-3 sentences) for a meditation session.
-        Welcome them, acknowledge they're taking time for themselves, and invite them to find a comfortable position.
-        Keep it calming and gentle."""
+        "prompt": """Write a warm, gentle welcome for a meditation session. Speak as if you're a caring friend sitting beside them.
+
+TONE: Intimate, soft, unhurried. Like a whisper on a quiet evening.
+
+Include:
+- A gentle acknowledgment that they've chosen to pause
+- An invitation to settle into comfort
+- A reminder that there's nowhere else to be right now
+
+Write 3-4 short sentences. Use ellipses (...) for natural pauses. Don't use bullet points or lists - just flowing, poetic prose."""
     },
     {
         "id": "breathing",
@@ -28,12 +39,18 @@ MEDITATION_STAGES = [
         "duration": 120,
         "icon": "wind",
         "description": "Deep breathing exercises",
-        "prompt": """Guide a 2-minute breathing exercise. Include:
-        - Box breathing (inhale 4 counts, hold 4, exhale 4, hold 4)
-        - At least 3 full cycles
-        - Gentle reminders to release tension
-        - Use "..." to indicate pauses
-        Keep instructions clear and pacing slow."""
+        "prompt": """Guide a gentle breathing exercise. Your voice should feel like a soft wave, rising and falling.
+
+TONE: Rhythmic, flowing, almost musical. Each instruction should feel like it's riding on a breath itself.
+
+Structure:
+- Begin by noticing the breath as it already is
+- Gently invite deeper breaths
+- Guide 3-4 cycles of: breathe in... hold softly... release slowly...
+- Use numbers poetically ("breathe in... two... three... four...")
+- Weave in imagery (breath like ocean waves, like clouds drifting)
+
+Use "..." liberally for pauses. Make it feel like the words themselves are breathing. No rushing. Let silence have space."""
     },
     {
         "id": "bodyscan",
@@ -41,12 +58,19 @@ MEDITATION_STAGES = [
         "duration": 90,
         "icon": "user",
         "description": "Release physical tension",
-        "prompt": """Guide a brief body scan (1.5 minutes). Cover:
-        - Start at the top of the head
-        - Move down through face, shoulders, arms, chest, belly, legs, feet
-        - Invite them to notice and release tension
-        - Keep it flowing and gentle
-        Use "..." for pauses."""
+        "prompt": """Guide a gentle body scan meditation. Move through the body like warm sunlight slowly traveling across skin.
+
+TONE: Soft, unhurried, tender. As if each body part is being gently held.
+
+Flow:
+- Start at the crown of the head, like warmth pooling there
+- Drift down through face (forehead softening... eyes resting... jaw releasing)
+- Let shoulders drop like leaves falling
+- Arms growing heavy and warm
+- Chest open, belly soft
+- Hips, legs, feet... all releasing into the ground
+
+Use sensory language: warmth, heaviness, softness, melting. Let each area have a moment before moving on. Use "..." for transitions."""
     },
     {
         "id": "visualization",
@@ -54,12 +78,19 @@ MEDITATION_STAGES = [
         "duration": 90,
         "icon": "eye",
         "description": "Peaceful imagery",
-        "prompt": """Guide a brief peaceful visualization (1.5 minutes).
-        - Describe a calming natural scene (forest, beach, mountain meadow, etc.)
-        - Engage multiple senses (what they see, hear, feel, smell)
-        - Help them feel safe and at peace
-        - Use rich but simple imagery
-        Use "..." for pauses."""
+        "prompt": """Paint a peaceful scene with words. Create a sanctuary they can step into.
+
+TONE: Dreamy, immersive, rich with sensation. Like describing a beautiful dream.
+
+Create a scene (choose one: forest glade, quiet beach at sunset, mountain meadow, cozy room with rain outside):
+- What they see (soft light, gentle colors, movement)
+- What they hear (birdsong, waves, wind, rain)
+- What they feel on their skin (warmth, breeze, softness)
+- What they smell (flowers, ocean, pine, rain)
+- The deep safety and peace of this place
+
+Make it personal: "you find yourself..." "you notice..." "you feel..."
+Use present tense. Let the scene unfold slowly. This is their sanctuary."""
     },
     {
         "id": "closing",
@@ -67,12 +98,17 @@ MEDITATION_STAGES = [
         "duration": 30,
         "icon": "sun",
         "description": "Gentle return",
-        "prompt": """Gently close the meditation (30 seconds).
-        - Slowly bring awareness back to the room
-        - Invite gentle movement (fingers, toes)
-        - Express gratitude for their practice
-        - Leave them with a positive intention
-        Keep it brief and warm."""
+        "prompt": """Gently guide them back from the meditation. Like slowly waking from a peaceful dream.
+
+TONE: Soft, grateful, grounding. A gentle landing.
+
+Include:
+- Slowly becoming aware of the room again
+- Gentle movements (wiggle fingers, take a deeper breath)
+- Carrying the peace with them
+- A simple, warm closing (gratitude for their practice)
+
+Keep it brief and tender. End with something they can carry into their day. No grand statements - just quiet warmth."""
     }
 ]
 
@@ -88,6 +124,17 @@ class MeditationStage(BaseModel):
 class MeditationSession(BaseModel):
     stages: List[MeditationStage]
     total_duration: int
+
+
+class ReflectionRequest(BaseModel):
+    content: str
+    session_duration: Optional[int] = None
+
+
+class ReflectionResponse(BaseModel):
+    status: str
+    message: str
+    insight: Optional[str] = None
 
 
 @router.get("/stages", response_model=MeditationSession)
@@ -117,17 +164,24 @@ async def get_stage_content(stage_id: str):
     try:
         model = genai.GenerativeModel('gemini-2.0-flash')
 
-        system_prompt = f"""You are a calm, soothing meditation guide.
-        Speak slowly and gently. Use calming, peaceful language.
-        Keep your voice soft and reassuring.
+        system_prompt = f"""You are a meditation guide with a voice like warm honey - soft, slow, and deeply calming.
 
-        {stage['prompt']}"""
+CRITICAL STYLE RULES:
+- Write as if speaking to someone you care about
+- Use simple, sensory words (soft, warm, gentle, light, ease)
+- Short sentences. Let them breathe.
+- Use "..." for pauses - these are as important as words
+- No clinical language, no instructions that feel like commands
+- Everything is an invitation, never a demand ("you might notice..." not "notice your...")
+- Avoid: "Now", "Next", "Let's", "I want you to" - these feel mechanical
+
+{stage['prompt']}"""
 
         response = model.generate_content(
             system_prompt,
             generation_config=genai.types.GenerationConfig(
-                temperature=0.7,
-                max_output_tokens=500,
+                temperature=0.85,
+                max_output_tokens=600,
             )
         )
 
@@ -148,74 +202,134 @@ async def get_stage_content(stage_id: str):
 
 
 def get_fallback_content(stage_id: str) -> str:
-    """Fallback content if AI generation fails"""
+    """Fallback content with improved natural tone"""
     fallbacks = {
-        "welcome": """Welcome to your meditation session. Take a moment to find a comfortable position.
-        Close your eyes if that feels right, and let your shoulders drop away from your ears.
-        You're exactly where you need to be right now.""",
+        "welcome": """You're here... and that's enough.
 
-        "breathing": """Let's begin with some deep breathing...
+Find a position that feels good to you... let your body settle... there's no rush.
 
-        Breathe in slowly... 2... 3... 4...
-        Hold gently... 2... 3... 4...
-        Exhale slowly... 2... 3... 4...
-        Hold empty... 2... 3... 4...
+Whatever brought you here today, you can set it down for a few minutes... it will wait.
 
-        Again, breathe in... letting your belly expand...
-        Hold... feeling calm and centered...
-        Breathe out... releasing any tension...
-        Hold... at peace...
+Right now, there's just this breath... this moment... and you.""",
 
-        One more time... deep breath in...
-        Hold...
-        And release completely...
-        Rest here for a moment.""",
+        "breathing": """Notice the breath that's already moving through you... no need to change anything yet... just witnessing...
 
-        "bodyscan": """Bring your attention to the top of your head...
-        Notice any sensations there... and let them soften...
+When you're ready... let the next inhale grow a little deeper... filling you up... two... three... four...
 
-        Moving down to your face... relax your forehead... your eyes... your jaw...
-        Let your shoulders drop... releasing any tension you're holding...
+Hold it gently... like holding something precious... two... three... four...
 
-        Feel your arms grow heavy and relaxed... your hands... your fingers...
+And release... letting it all pour out... soft and slow... two... three... four...
 
-        Notice your chest rising and falling... your belly soft...
+Rest in the stillness... two... three... four...
 
-        Let relaxation flow down through your hips... your legs...
-        All the way down to your feet... your toes...
+Again... breathing in like the tide coming in... slow and sure...
 
-        Your whole body is supported... relaxed... at ease.""",
+Holding... suspended in this quiet moment...
 
-        "visualization": """Imagine yourself in a peaceful meadow...
-        The grass is soft beneath you... a gentle breeze touches your skin...
+Releasing... like waves returning to the sea...
 
-        Above you, the sky is a perfect blue with soft white clouds drifting by...
-        You hear birds singing in the distance... leaves rustling gently...
+Resting... in the space between...
 
-        The sun warms you just enough... you feel completely safe here...
-        This is your place of peace... always available to you...
+One more time... let the breath fill you with ease...
 
-        Breathe in the fresh, clean air... and feel deeply at rest.""",
+Hold this fullness...
 
-        "closing": """Slowly begin to bring your awareness back to this room...
+And let go completely... feeling your whole body soften...
 
-        Gently wiggle your fingers and toes...
-        Take a deep breath in... and let it out with a sigh...
+Just breathe naturally now... noticing how calm has settled into you.""",
 
-        When you're ready, slowly open your eyes...
+        "bodyscan": """Bring your attention to the very top of your head... like a warm light resting there...
 
-        Thank you for taking this time for yourself.
-        Carry this sense of calm with you as you continue your day."""
+Let that warmth drift down across your forehead... smoothing away any tension... your eyes softening behind closed lids...
+
+Your jaw unclenches... lips part slightly... face completely at ease...
+
+The warmth flows down your neck... into your shoulders... feel them drop... releasing what they've been carrying...
+
+Down through your arms... heavy and relaxed... all the way to your fingertips...
+
+Your chest rises and falls... effortless... your belly soft and open...
+
+The warmth continues down... hips releasing... legs growing heavy against the ground...
+
+All the way down to your feet... your toes... every part of you held... supported... at rest.""",
+
+        "visualization": """You find yourself in a quiet place... a meadow, perhaps... bathed in the soft gold of late afternoon sun...
+
+The grass beneath you is soft... the air warm on your skin... carrying the faint scent of wildflowers...
+
+In the distance, you hear birdsong... and the gentle rustle of leaves in a breeze you can barely feel...
+
+There is nothing you need to do here... nowhere to go... nothing to figure out...
+
+This place exists just for you... a sanctuary you can return to whenever you need...
+
+The sky above you is endless... soft clouds drifting... and you feel yourself being held by this peaceful place...
+
+Safe... quiet... deeply at rest.""",
+
+        "closing": """Gently... in your own time... begin to notice the room around you again...
+
+The surface beneath you... the air on your skin... sounds nearby and far away...
+
+Wiggle your fingers if you'd like... your toes... take a breath that's a little deeper...
+
+There's no rush to move... but when you're ready... let your eyes softly open...
+
+Carry this quietness with you... it's yours now...
+
+Thank you for giving yourself these moments of peace."""
     }
-    return fallbacks.get(stage_id, "Take a moment to breathe and be present.")
+    return fallbacks.get(stage_id, "Breathe... and be here... just as you are.")
+
+
+@router.post("/reflection", response_model=ReflectionResponse)
+async def save_reflection(request: ReflectionRequest, user_id: str = DEMO_USER_ID):
+    """Save post-meditation reflection and provide insight"""
+    try:
+        print(f"[MEDITATION] Saving reflection for user: {user_id}")
+
+        # Generate a gentle insight based on their reflection
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        insight_response = model.generate_content(
+            f"""Someone just finished a meditation and shared this reflection:
+
+"{request.content}"
+
+Write a brief, warm response (2-3 sentences) that:
+- Acknowledges what they shared with genuine care
+- Reflects back something meaningful you noticed
+- Offers a gentle observation or affirmation
+
+Keep it personal and soft, not clinical. Like a kind friend responding.""",
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.8,
+                max_output_tokens=150,
+            )
+        )
+
+        # Save to journal/memories with meditation context
+        entry_content = f"[Meditation Reflection]\n{request.content}"
+        await ingest_journal(user_id, entry_content)
+
+        return ReflectionResponse(
+            status="success",
+            message="Your reflection has been saved.",
+            insight=insight_response.text
+        )
+
+    except Exception as e:
+        print(f"[MEDITATION] Error saving reflection: {str(e)}")
+        return ReflectionResponse(
+            status="success",
+            message="Your reflection has been saved.",
+            insight="Thank you for sharing your thoughts. May this peace stay with you."
+        )
 
 
 @router.websocket("/ws/session")
 async def meditation_session(websocket: WebSocket):
-    """
-    WebSocket endpoint for real-time meditation sessions
-    Handles stage progression and real-time guidance
-    """
+    """WebSocket endpoint for real-time meditation sessions"""
     await websocket.accept()
     print("[MEDITATION] WebSocket connection accepted")
 
@@ -228,16 +342,16 @@ async def meditation_session(websocket: WebSocket):
                 stage_id = message_data.get("stage_id")
                 print(f"[MEDITATION] Starting stage: {stage_id}")
 
-                # Get stage content
                 stage = next((s for s in MEDITATION_STAGES if s["id"] == stage_id), None)
                 if stage:
                     try:
                         model = genai.GenerativeModel('gemini-2.0-flash')
                         response = model.generate_content(
-                            f"""You are a calm meditation guide. {stage['prompt']}""",
+                            f"""You are a meditation guide with a voice like warm honey.
+                            {stage['prompt']}""",
                             generation_config=genai.types.GenerationConfig(
-                                temperature=0.7,
-                                max_output_tokens=500,
+                                temperature=0.85,
+                                max_output_tokens=600,
                             )
                         )
                         content = response.text
@@ -263,7 +377,7 @@ async def meditation_session(websocket: WebSocket):
                 print("[MEDITATION] Session complete")
                 await websocket.send_json({
                     "type": "session_complete_ack",
-                    "message": "Namaste. Your meditation session is complete."
+                    "message": "Your meditation is complete. Take a moment to notice how you feel."
                 })
 
             elif message_data.get("type") == "ping":
