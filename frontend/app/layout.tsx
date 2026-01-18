@@ -1,12 +1,12 @@
 import type { Metadata } from 'next'
-import { JetBrains_Mono } from 'next/font/google'
+import { Inter } from 'next/font/google'
 import './globals.css'
 
-const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'The Mirror - Self Discovery Engine',
-  description: 'Your Digital Twin and Council of Agents',
+  title: 'Zen - Mindful Self Discovery',
+  description: 'A gentle space for reflection, journaling, and inner peace',
 }
 
 export default function RootLayout({
@@ -16,7 +16,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${jetbrainsMono.className} terminal-scanline`}>
+      <body className={inter.className}>
         {children}
       </body>
     </html>

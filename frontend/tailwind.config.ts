@@ -9,15 +9,23 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        terminal: {
-          bg: '#0A0E27',
-          accent: '#00FF41',
-          muted: '#888888',
-          error: '#FF0000',
+        zen: {
+          teal: '#a8c9c3',
+          lavender: '#d4c9e0',
+          gold: '#e8d9b8',
+          text: '#4a4a48',
+          'text-light': '#8a8a88',
+          'bg-start': '#fafaf8',
+          'bg-mid': '#f0efe8',
+          'bg-end': '#e8ebe5',
         },
       },
       fontFamily: {
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        serif: ['Georgia', 'Times New Roman', 'serif'],
+      },
+      backdropBlur: {
+        '20': '20px',
       },
     },
   },
