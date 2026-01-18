@@ -3,42 +3,84 @@
 import { motion } from 'framer-motion'
 import { ParticleBackground } from '@/components/zen/ParticleBackground'
 import { Navigation } from '@/components/zen/Navigation'
+import { useEffect, useState } from 'react'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL
+
+interface IdentityTheme {
+  name: string
+  description?: string
+}
+
+interface Insights {
+  coreValues: string[]
+  emotionalPatterns: string[]
+  identityThemes: (string | IdentityTheme)[]
+  tensions: string[]
+  keywords?: string[]
+  analysisDate?: string
+  journalEntriesAnalyzed?: number
+}
 
 export default function DigitalSelf() {
-  // In a real app, this would come from the API based on journal analysis
-  const insights = {
-    coreValues: [
-      'Authenticity',
-      'Growth',
-      'Connection',
-      'Compassion',
-      'Curiosity',
-    ],
+  const [insights, setInsights] = useState<Insights>({
+    coreValues: ['Authenticity', 'Growth', 'Connection', 'Compassion', 'Curiosity'],
     emotionalPatterns: [
       'You often find peace in solitude',
       'Uncertainty precedes your moments of growth',
       'Gratitude appears in quiet observations',
     ],
-    identityThemes: [
-      'The Observer',
-      'The Learner',
-      'The Seeker',
-      'The Gentle Warrior',
-    ],
+    identityThemes: ['The Observer', 'The Learner', 'The Seeker', 'The Gentle Warrior'],
     tensions: [
       'Between doing and being',
       'Between certainty and exploration',
       'Between connection and solitude',
     ],
+  })
+  const [isRegenerating, setIsRegenerating] = useState(false)
+
+  useEffect(() => {
+    fetchInsights()
+  }, [])
+
+  const fetchInsights = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/digital-self/insights`)
+      const data = await response.json()
+      setInsights(data)
+    } catch (error) {
+      console.error('Error fetching insights:', error)
+    }
   }
 
-  const floatingKeywords = [
-    { word: 'present', x: 15, y: 20, delay: 0 },
-    { word: 'tender', x: 75, y: 15, delay: 0.3 },
-    { word: 'seeking', x: 45, y: 70, delay: 0.6 },
-    { word: 'authentic', x: 25, y: 85, delay: 0.9 },
-    { word: 'evolving', x: 80, y: 60, delay: 1.2 },
-  ]
+  const handleRegenerate = async () => {
+    try {
+      setIsRegenerating(true)
+      const response = await fetch(`${API_URL}/api/digital-self/regenerate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+      const data = await response.json()
+
+      if (data.status === 'success') {
+        setInsights(data.insights)
+      }
+    } catch (error) {
+      console.error('Error regenerating insights:', error)
+    } finally {
+      setIsRegenerating(false)
+    }
+  }
+
+  // Generate floating keywords from API data or use defaults
+  const keywordsData = insights.keywords || ['present', 'tender', 'seeking', 'authentic', 'evolving']
+  const floatingKeywords = keywordsData.slice(0, 5).map((word, i) => ({
+    word,
+    x: [15, 75, 45, 25, 80][i],
+    y: [20, 15, 70, 85, 60][i],
+    delay: i * 0.3,
+  }))
 
   return (
     <div className="min-h-screen relative">
@@ -58,6 +100,27 @@ export default function DigitalSelf() {
                 <p className="text-lg serif" style={{ color: 'var(--color-text-light)' }}>
                   A gentle reflection of who you&apos;re becoming
                 </p>
+                {insights.journalEntriesAnalyzed !== undefined && insights.journalEntriesAnalyzed > 0 ? (
+                  <p className="text-sm mt-2" style={{ color: 'var(--color-text-light)', opacity: 0.7 }}>
+                    Based on {insights.journalEntriesAnalyzed} journal entries
+                  </p>
+                ) : null}
+                <div className="mt-4">
+                  <button
+                    onClick={handleRegenerate}
+                    disabled={isRegenerating}
+                    className="px-6 py-2 rounded-full text-sm"
+                    style={{
+                      background: 'rgba(168, 201, 195, 0.2)',
+                      border: '1px solid rgba(168, 201, 195, 0.3)',
+                      color: 'var(--color-teal)',
+                      cursor: isRegenerating ? 'wait' : 'pointer',
+                      opacity: isRegenerating ? 0.6 : 1,
+                    }}
+                  >
+                    {isRegenerating ? 'Regenerating...' : '↻ Regenerate Insights'}
+                  </button>
+                </div>
               </div>
 
               {/* Floating Keywords */}
@@ -170,18 +233,26 @@ export default function DigitalSelf() {
                   <h3 className="mb-6" style={{ color: 'var(--color-teal)' }}>
                     Identity Themes
                   </h3>
-                  <div className="space-y-3">
-                    {insights.identityThemes.map((theme, index) => (
-                      <motion.div
-                        key={theme}
-                        className="text-lg"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        transition={{ duration: 0.6, delay: 0.9 + index * 0.15 }}
-                      >
-                        {theme}
-                      </motion.div>
-                    ))}
+                  <div className="space-y-4">
+                    {insights.identityThemes.map((theme, index) => {
+                      const themeName = typeof theme === 'string' ? theme : theme.name
+                      const themeDesc = typeof theme === 'object' ? theme.description : null
+                      return (
+                        <motion.div
+                          key={themeName}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ duration: 0.6, delay: 0.9 + index * 0.15 }}
+                        >
+                          <div className="text-lg font-medium">{themeName}</div>
+                          {themeDesc && (
+                            <div className="text-sm mt-1" style={{ color: 'var(--color-text-light)', opacity: 0.8 }}>
+                              {themeDesc}
+                            </div>
+                          )}
+                        </motion.div>
+                      )
+                    })}
                   </div>
                 </motion.div>
 

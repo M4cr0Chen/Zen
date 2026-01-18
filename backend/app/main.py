@@ -32,10 +32,11 @@ async def health():
     return {"status": "ok"}
 
 # Import routers
-from app.routers import journal, chat, meditation
+from app.routers import journal, chat, meditation, digital_self
 app.include_router(journal.router, prefix="/api/journal", tags=["journal"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(meditation.router, prefix="/api/meditation", tags=["meditation"])
+app.include_router(digital_self.router, prefix="/api/digital-self", tags=["digital-self"])
 
 if __name__ == "__main__":
     import uvicorn
