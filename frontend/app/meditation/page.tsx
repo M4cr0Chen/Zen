@@ -65,7 +65,7 @@ export default function Meditation() {
       <Navigation />
 
       <div className="ml-20 relative z-10">
-        <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
+        <div className="min-h-screen flex items-center justify-center relative overflow-hidden px-20 py-16">
           {/* Animated Background Waves */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             {[...Array(3)].map((_, i) => (
