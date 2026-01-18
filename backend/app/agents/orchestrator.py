@@ -515,13 +515,20 @@ Respond with warmth, depth, and genuine care:"""
             full_prompt,
             generation_config=genai.types.GenerationConfig(
                 temperature=0.8,
-                max_output_tokens=800,
+                max_output_tokens=2048,  # Increased from 800
                 top_p=0.95,
             )
         )
 
         if response.candidates:
             candidate = response.candidates[0]
+
+            # Check if response was truncated
+            if hasattr(candidate, 'finish_reason'):
+                print(f"[EMPATH] Finish reason: {candidate.finish_reason}")
+                if candidate.finish_reason == 'MAX_TOKENS':
+                    print("⚠️  [EMPATH] WARNING: Response truncated due to max_output_tokens limit!")
+
             if candidate.content and candidate.content.parts:
                 assistant_message = "".join(part.text for part in candidate.content.parts)
             else:
@@ -598,12 +605,19 @@ Respond with warmth and ask a clarifying question to understand their situation 
             full_prompt,
             generation_config=genai.types.GenerationConfig(
                 temperature=0.7,
-                max_output_tokens=300,
+                max_output_tokens=1024,  # Increased from 300
             )
         )
 
         if response.candidates:
             candidate = response.candidates[0]
+
+            # Check if response was truncated
+            if hasattr(candidate, 'finish_reason'):
+                print(f"[DISCOVERY] Finish reason: {candidate.finish_reason}")
+                if candidate.finish_reason == 'MAX_TOKENS':
+                    print("⚠️  [DISCOVERY] WARNING: Response truncated due to max_output_tokens limit!")
+
             if candidate.content and candidate.content.parts:
                 assistant_message = "".join(part.text for part in candidate.content.parts)
             else:
@@ -699,13 +713,20 @@ User: {user_message}
             full_prompt,
             generation_config=genai.types.GenerationConfig(
                 temperature=0.85,
-                max_output_tokens=800,
+                max_output_tokens=2048,  # Increased from 800
                 top_p=0.95,
             )
         )
 
         if response.candidates:
             candidate = response.candidates[0]
+
+            # Check if response was truncated
+            if hasattr(candidate, 'finish_reason'):
+                print(f"[WISE MENTOR] Finish reason: {candidate.finish_reason}")
+                if candidate.finish_reason == 'MAX_TOKENS':
+                    print(f"⚠️  [WISE MENTOR] WARNING: {mentor['name']}'s response truncated due to max_output_tokens limit!")
+
             if candidate.content and candidate.content.parts:
                 assistant_message = "".join(part.text for part in candidate.content.parts)
             else:
